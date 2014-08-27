@@ -18,7 +18,6 @@
 #include "installd.h"
 #include <diskusage/dirsize.h>
 #include <selinux/android.h>
-#include <unistd.h>
 
 /* Directory records that are used in execution of commands. */
 dir_rec_t android_data_dir;
@@ -551,6 +550,7 @@ int create_cache_path(char path[PKG_PATH_MAX], const char *src)
     char *tmp;
     int srclen;
     int dstlen;
+    char dexopt_data_only[PROPERTY_VALUE_MAX];
 
     srclen = strlen(src);
 
@@ -561,6 +561,14 @@ int create_cache_path(char path[PKG_PATH_MAX], const char *src)
 
     if (srclen > PKG_PATH_MAX) {        // XXX: PKG_NAME_MAX?
         return -1;
+    }
+
+    const char *cache_path = DALVIK_CACHE_PREFIX;
+    if (!strncmp(src, "/system", 7)) {
+        property_get("dalvik.vm.dexopt-data-only", dexopt_data_only, "1");
+        if (strcmp(dexopt_data_only, "1") != 0) {
+            cache_path = DALVIK_SYSTEM_CACHE_PREFIX;
+        }
     }
 
     dstlen = srclen + strlen(DALVIK_CACHE_PREFIX) + 
@@ -629,9 +637,6 @@ static int wait_dexopt(pid_t pid, const char* apk_path)
     int status;
     pid_t got_pid;
 
-    /*
-     * Wait for the optimization process to finish.
-     */
     while (1) {
         got_pid = waitpid(pid, &status, 0);
         if (got_pid == -1 && errno == EINTR) {
@@ -753,9 +758,11 @@ int dexopt(const char *apk_path, uid_t uid, int is_public)
         }
         exit(68);   /* only get here on exec failure */
     } else {
-        res = wait_dexopt(pid, apk_path);
-        if (res != 0) {
-            ALOGE("dexopt in='%s' out='%s' res=%d\n", apk_path, out_path, res);
+        res = wait_child(pid);
+        if (res == 0) {
+            ALOGV("DexInv: --- END '%s' (success) ---\n", apk_path);
+        } else {
+            ALOGE("DexInv: --- END '%s' --- status=0x%04x, process failed\n", apk_path, res);
             goto fail;
         }
     }
@@ -1109,8 +1116,6 @@ out:
 
     return rc;
 }
-<<<<<<< HEAD
-=======
 
 static void run_idmap(const char *target_apk, const char *overlay_apk, int idmap_fd,
                       uint32_t target_hash, uint32_t overlay_hash, const char *redirectionsPath)
@@ -1416,4 +1421,3 @@ fail:
     }
     return -1;
 }
->>>>>>> ebce8ce... Theme Engine [5/8]
