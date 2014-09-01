@@ -18,6 +18,7 @@
 #include "installd.h"
 #include <diskusage/dirsize.h>
 #include <selinux/android.h>
+#include <unistd.h>
 
 /* Directory records that are used in execution of commands. */
 dir_rec_t android_data_dir;
@@ -550,7 +551,6 @@ int create_cache_path(char path[PKG_PATH_MAX], const char *src)
     char *tmp;
     int srclen;
     int dstlen;
-    char dexopt_data_only[PROPERTY_VALUE_MAX];
 
     srclen = strlen(src);
 
@@ -561,14 +561,6 @@ int create_cache_path(char path[PKG_PATH_MAX], const char *src)
 
     if (srclen > PKG_PATH_MAX) {        // XXX: PKG_NAME_MAX?
         return -1;
-    }
-
-    const char *cache_path = DALVIK_CACHE_PREFIX;
-    if (!strncmp(src, "/system", 7)) {
-        property_get("dalvik.vm.dexopt-data-only", dexopt_data_only, "1");
-        if (strcmp(dexopt_data_only, "1") != 0) {
-            cache_path = DALVIK_SYSTEM_CACHE_PREFIX;
-        }
     }
 
     dstlen = srclen + strlen(DALVIK_CACHE_PREFIX) + 
@@ -632,7 +624,7 @@ static void run_dex2oat(int zip_fd, int oat_fd, const char* input_file_name,
     ALOGE("execl(%s) failed: %s\n", DEX2OAT_BIN, strerror(errno));
 }
 
-static int wait_dexopt(pid_t pid, const char* apk_path)
+static int wait_child(pid_t pid)
 {
     int status;
     pid_t got_pid;
@@ -652,11 +644,8 @@ static int wait_dexopt(pid_t pid, const char* apk_path)
     }
 
     if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
-        ALOGV("DexInv: --- END '%s' (success) ---\n", apk_path);
         return 0;
     } else {
-        ALOGW("DexInv: --- END '%s' --- status=0x%04x, process failed\n",
-            apk_path, status);
         return status;      /* always nonzero */
     }
 }
